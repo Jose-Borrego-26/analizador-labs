@@ -1,0 +1,43 @@
+@import "tailwindcss";
+
+@theme {
+  /* Paleta oficial Hormonal Balance */
+  --color-hb-crema:   #FAF6E8; /* Fondo principal */
+  --color-hb-purpura: #4A1E6E; /* Títulos, marca */
+  --color-hb-magenta: #D85B92; /* CTA, callouts */
+  --color-hb-magfuerte: #C21E73; /* callout sólido tipo carrusel */
+  --color-hb-dorado:  #C9A961; /* Acentos, divisores */
+  --color-hb-grisOsc: #2C2C2C; /* Texto */
+
+  --font-sans: var(--font-montserrat), "Montserrat", "Inter", system-ui, sans-serif;
+}
+
+html, body {
+  background: var(--color-hb-crema);
+  color: var(--color-hb-grisOsc);
+  font-family: var(--font-sans);
+}
+
+/* Divisor de marca: barra dorada gruesa de puntas redondeadas bajo títulos */
+.sello-dorado {
+  display: block;
+  width: 56px;
+  height: 5px;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, #E8C547, #C9A961);
+  margin-top: 8px;
+}
+
+/* Estado de marcadores en la tabla */
+.estado-alto  { color: #C21E73; font-weight: 700; }
+.estado-bajo  { color: #1d4ed8; font-weight: 700; }
+.estado-ok    { color: #15803d; }
+
+/* Impresión / exportar a PDF */
+@media print {
+  .no-print { display: none !important; }
+  html, body { background: #fff; }
+  main { max-width: none; padding: 0; }
+  article, section, table, tr { break-inside: avoid; }
+  @page { margin: 14mm; }
+}
