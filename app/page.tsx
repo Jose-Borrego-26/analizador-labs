@@ -1,8 +1,9 @@
 "use client";
 
 import { useRef, useState } from "react";
-import type { AnalisisLab, Sexo } from "@/app/lib/analizar-lab";
+import type { AnalisisLab, DatosPaciente, Sexo } from "@/app/lib/analizar-lab";
 import Resultado from "@/app/components/Resultado";
+import ChatSeguimiento from "@/app/components/ChatSeguimiento";
 
 function SelectorArchivos({
   archivos,
@@ -72,6 +73,7 @@ export default function Home() {
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<AnalisisLab | null>(null);
+  const [datosUsados, setDatosUsados] = useState<DatosPaciente>({});
 
   function agregarArchivos(fs: File[]) {
     setError(null);
@@ -99,6 +101,12 @@ export default function Home() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Error al analizar.");
       setData(json as AnalisisLab);
+      setDatosUsados({
+        sexo,
+        edad: edad ? Number(edad) : null,
+        objetivo: objetivo.trim(),
+        notasCoach: notas.trim(),
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error al analizar.");
     } finally {
@@ -260,6 +268,7 @@ export default function Home() {
           <div id="reporte">
             <Resultado data={data} />
           </div>
+          <ChatSeguimiento analisis={data} datos={datosUsados} />
         </>
       )}
     </main>
