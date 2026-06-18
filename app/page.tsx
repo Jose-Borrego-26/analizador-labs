@@ -4,13 +4,15 @@ import { useRef, useState } from "react";
 import type { AnalisisLab, Sexo } from "@/app/lib/analizar-lab";
 import Resultado from "@/app/components/Resultado";
 
-function SelectorArchivo({
-  archivo,
-  onElegir,
+function SelectorArchivos({
+  archivos,
+  onAgregar,
+  onQuitar,
   etiqueta,
 }: {
-  archivo: File | null;
-  onElegir: (f: File | null) => void;
+  archivos: File[];
+  onAgregar: (fs: File[]) => void;
+  onQuitar: (i: number) => void;
   etiqueta: string;
 }) {
   const ref = useRef<HTMLInputElement>(null);
@@ -19,56 +21,80 @@ function SelectorArchivo({
       <input
         ref={ref}
         type="file"
+        multiple
         accept="application/pdf,image/jpeg,image/png,image/webp"
         className="hidden"
-        onChange={(e) => onElegir(e.target.files?.[0] ?? null)}
+        onChange={(e) => {
+          onAgregar(Array.from(e.target.files ?? []));
+          if (ref.current) ref.current.value = "";
+        }}
       />
       <button
         type="button"
         onClick={() => ref.current?.click()}
         className="w-full rounded-2xl border-2 border-dashed border-hb-purpura/40 py-8 px-4 text-center hover:border-hb-magenta transition-colors"
       >
-        {archivo ? (
-          <span className="text-hb-purpura font-semibold break-all">
-            {archivo.name}
-          </span>
-        ) : (
-          <span className="text-hb-grisOsc/60">{etiqueta}</span>
-        )}
+        <span className="text-hb-grisOsc/60">{etiqueta}</span>
       </button>
+      {archivos.length > 0 && (
+        <ul className="mt-3 space-y-2">
+          {archivos.map((f, i) => (
+            <li
+              key={i}
+              className="flex items-center justify-between gap-3 rounded-xl bg-white/70 border border-hb-dorado/30 px-3 py-2"
+            >
+              <span className="text-sm text-hb-purpura font-semibold break-all">
+                {f.name}
+              </span>
+              <button
+                type="button"
+                onClick={() => onQuitar(i)}
+                className="flex-none text-sm text-hb-grisOsc/50 hover:text-hb-magfuerte transition-colors"
+              >
+                Quitar
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
 
 export default function Home() {
-  const [archivo, setArchivo] = useState<File | null>(null);
-  const [anterior, setAnterior] = useState<File | null>(null);
+  const [archivos, setArchivos] = useState<File[]>([]);
+  const [anteriores, setAnteriores] = useState<File[]>([]);
   const [mostrarComparar, setMostrarComparar] = useState(false);
   const [sexo, setSexo] = useState<Sexo>("");
   const [edad, setEdad] = useState("");
   const [objetivo, setObjetivo] = useState("");
+  const [notas, setNotas] = useState("");
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<AnalisisLab | null>(null);
 
-  function elegir(f: File | null) {
+  function agregarArchivos(fs: File[]) {
     setError(null);
     setData(null);
-    setArchivo(f);
+    setArchivos((prev) => [...prev, ...fs]);
+  }
+  function quitarArchivo(i: number) {
+    setArchivos((prev) => prev.filter((_, j) => j !== i));
   }
 
   async function analizar() {
-    if (!archivo) return;
+    if (archivos.length === 0) return;
     setCargando(true);
     setError(null);
     setData(null);
     try {
       const fd = new FormData();
-      fd.append("archivo", archivo);
-      if (anterior) fd.append("anterior", anterior);
+      archivos.forEach((f) => fd.append("archivos", f));
+      anteriores.forEach((f) => fd.append("anteriores", f));
       if (sexo) fd.append("sexo", sexo);
       if (edad) fd.append("edad", edad);
       if (objetivo.trim()) fd.append("objetivo", objetivo.trim());
+      if (notas.trim()) fd.append("notasCoach", notas.trim());
       const res = await fetch("/api/analizar", { method: "POST", body: fd });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Error al analizar.");
@@ -88,16 +114,18 @@ export default function Home() {
         </h1>
         <span className="sello-dorado mx-auto" />
         <p className="text-hb-grisOsc/70 mt-3">
-          Sube un estudio y obtén interpretación, causas probables y soluciones.
+          Sube uno o varios estudios y obtén interpretación, causas probables y
+          soluciones.
         </p>
       </header>
 
       {/* Zona de subida */}
       <section className="rounded-3xl border border-hb-dorado/40 bg-white/50 p-6 mb-8 no-print">
-        <SelectorArchivo
-          archivo={archivo}
-          onElegir={elegir}
-          etiqueta="Toca para elegir un PDF o imagen del estudio"
+        <SelectorArchivos
+          archivos={archivos}
+          onAgregar={agregarArchivos}
+          onQuitar={quitarArchivo}
+          etiqueta="Toca para elegir uno o varios PDF/imágenes del estudio"
         />
 
         {/* Comparar con estudio anterior */}
@@ -110,22 +138,25 @@ export default function Home() {
             + Comparar con un estudio anterior
           </button>
         ) : (
-          <div className="mt-3">
+          <div className="mt-4">
             <p className="text-xs font-bold uppercase text-hb-purpura/80 mb-2">
               Estudio anterior (para ver evolución)
             </p>
-            <SelectorArchivo
-              archivo={anterior}
-              onElegir={(f) => {
+            <SelectorArchivos
+              archivos={anteriores}
+              onAgregar={(fs) => {
                 setError(null);
-                setAnterior(f);
+                setAnteriores((prev) => [...prev, ...fs]);
               }}
-              etiqueta="Toca para elegir el estudio anterior"
+              onQuitar={(i) =>
+                setAnteriores((prev) => prev.filter((_, j) => j !== i))
+              }
+              etiqueta="Toca para elegir el/los documento(s) anterior(es)"
             />
             <button
               type="button"
               onClick={() => {
-                setAnterior(null);
+                setAnteriores([]);
                 setMostrarComparar(false);
               }}
               className="mt-2 text-sm text-hb-grisOsc/60 hover:text-hb-magfuerte transition-colors"
@@ -177,11 +208,27 @@ export default function Home() {
               className="w-full rounded-xl border border-hb-dorado/40 bg-white px-3 py-2"
             />
           </label>
+          <label className="text-sm col-span-2">
+            <span className="block text-hb-purpura/80 font-semibold mb-1">
+              Notas del coach / lo que dijo el doctor (opcional)
+            </span>
+            <textarea
+              value={notas}
+              onChange={(e) => setNotas(e.target.value)}
+              rows={3}
+              placeholder="Ej. el doctor dijo que la TSH alta es por hipotiroidismo subclínico; sospecho resistencia a la insulina; toma anticonceptivos…"
+              className="w-full rounded-xl border border-hb-dorado/40 bg-white px-3 py-2 resize-y"
+            />
+            <span className="block text-xs text-hb-grisOsc/50 mt-1">
+              La IA lo toma como contexto, pero hace su propio análisis
+              independiente.
+            </span>
+          </label>
         </div>
 
         <button
           type="button"
-          disabled={!archivo || cargando}
+          disabled={archivos.length === 0 || cargando}
           onClick={analizar}
           className="mt-5 w-full rounded-2xl bg-hb-purpura text-white font-bold py-3 disabled:opacity-40 hover:bg-hb-purpura/90 transition-colors"
         >

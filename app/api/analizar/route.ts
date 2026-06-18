@@ -11,47 +11,56 @@ const TIPOS_OK = new Set([
   "image/webp",
 ]);
 
-const MAX_BYTES = 20 * 1024 * 1024; // 20 MB
+const MAX_BYTES = 20 * 1024 * 1024; // 20 MB por archivo
 
 async function leerArchivo(file: File): Promise<{ base64: string; mediaType: string }> {
   if (!TIPOS_OK.has(file.type)) {
-    throw new Error("Formato no soportado. Sube un PDF o una imagen (JPG/PNG/WEBP).");
+    throw new Error("Formato no soportado. Sube PDF o imágenes (JPG/PNG/WEBP).");
   }
   const buf = Buffer.from(await file.arrayBuffer());
   if (buf.byteLength > MAX_BYTES) {
-    throw new Error("El archivo es muy grande (máx. 20 MB).");
+    throw new Error("Un archivo es muy grande (máx. 20 MB).");
   }
   return { base64: buf.toString("base64"), mediaType: file.type };
+}
+
+async function leerVarios(files: FormDataEntryValue[]): Promise<
+  { base64: string; mediaType: string }[]
+> {
+  const out: { base64: string; mediaType: string }[] = [];
+  for (const f of files) {
+    if (f instanceof File && f.size > 0) out.push(await leerArchivo(f));
+  }
+  return out;
 }
 
 export async function POST(req: NextRequest) {
   try {
     const form = await req.formData();
-    const file = form.get("archivo");
-    if (!(file instanceof File)) {
+
+    const archivos = await leerVarios(form.getAll("archivos"));
+    if (archivos.length === 0) {
       return NextResponse.json(
-        { error: "Falta el archivo del estudio." },
+        { error: "Falta al menos un documento del estudio." },
         { status: 400 },
       );
     }
-    const archivo = await leerArchivo(file);
 
-    // Estudio anterior opcional (para comparar evolución).
-    const fileAnterior = form.get("anterior");
-    const anterior =
-      fileAnterior instanceof File ? await leerArchivo(fileAnterior) : null;
+    // Estudio(s) anterior(es) opcional(es) para comparar evolución.
+    const anteriores = await leerVarios(form.getAll("anteriores"));
 
-    // Datos opcionales del paciente para afinar el análisis.
+    // Datos opcionales del paciente.
     const sexoRaw = String(form.get("sexo") ?? "");
     const sexo: Sexo = sexoRaw === "F" || sexoRaw === "M" ? sexoRaw : "";
     const edadRaw = Number(form.get("edad"));
     const edad = Number.isFinite(edadRaw) && edadRaw > 0 ? edadRaw : null;
     const objetivo = String(form.get("objetivo") ?? "").trim();
+    const notasCoach = String(form.get("notasCoach") ?? "").trim();
 
     const analisis = await analizarLaboratorio({
-      archivo,
-      anterior,
-      datos: { sexo, edad, objetivo },
+      archivos,
+      anteriores,
+      datos: { sexo, edad, objetivo, notasCoach },
     });
 
     return NextResponse.json(analisis);

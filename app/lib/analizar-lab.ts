@@ -21,6 +21,7 @@ export interface DatosPaciente {
   sexo?: Sexo;
   edad?: number | null;
   objetivo?: string;
+  notasCoach?: string;
 }
 
 export interface Marcador {
@@ -76,11 +77,25 @@ function bloquePaciente(d?: DatosPaciente): string {
   return `\n# DATOS DEL PACIENTE (úsalos para afinar interpretación, causas y soluciones)\n- ${partes.join("\n- ")}\n`;
 }
 
-function construirPrompt(opts: { datos?: DatosPaciente; comparar: boolean }): string {
-  const base = `Eres asistente clínico del Coach Hormonal Balance (José Borrego). Te paso un estudio de laboratorio (PDF o imagen). Léelo COMPLETO y devuelve un JSON estricto con la metadata, TODOS los marcadores y el análisis.
-${bloquePaciente(opts.datos)}${
+function bloqueNotas(d?: DatosPaciente): string {
+  const n = d?.notasCoach?.trim();
+  if (!n) return "";
+  return `\n# NOTAS DEL COACH (lo que dijo el doctor, causas sospechadas, contexto clínico)
+"""
+${n}
+"""
+Toma estas notas como CONTEXTO para afinar tu análisis. NO te limites a repetirlas: haz SIEMPRE tu propia interpretación, causas y soluciones independientes basadas en los valores del estudio. Si tu lectura coincide o difiere de lo que dijo el doctor, puedes señalarlo brevemente, pero el análisis es tuyo.\n`;
+}
+
+function construirPrompt(opts: { datos?: DatosPaciente; comparar: boolean; varios: boolean }): string {
+  const base = `Eres asistente clínico del Coach Hormonal Balance (José Borrego). Te paso ${
+    opts.varios
+      ? "VARIOS documentos del MISMO estudio actual (distintos paneles/hojas o fotos); combínalos TODOS en un solo análisis unificado"
+      : "un estudio de laboratorio (PDF o imagen)"
+  }. Léelo COMPLETO y devuelve un JSON estricto con la metadata, TODOS los marcadores y el análisis.
+${bloquePaciente(opts.datos)}${bloqueNotas(opts.datos)}${
     opts.comparar
-      ? `\n# COMPARACIÓN\nTe paso DOS estudios: primero el ANTERIOR y luego el ACTUAL (el más reciente). Analiza el ACTUAL, pero por cada marcador agrega el valor anterior y la tendencia (mejora/empeora/estable) según si el cambio acerca o aleja del rango óptimo. En el resumen y prioridades menciona la EVOLUCIÓN.\n`
+      ? `\n# COMPARACIÓN\nTe paso documentos del estudio ANTERIOR y del ACTUAL (el más reciente), claramente etiquetados. Analiza el ACTUAL, pero por cada marcador agrega el valor anterior y la tendencia (mejora/empeora/estable) según si el cambio acerca o aleja del rango óptimo. En el resumen y prioridades menciona la EVOLUCIÓN.\n`
       : ""
   }
 # QUÉ EXTRAER
@@ -250,24 +265,35 @@ function bloqueArchivo(a: Archivo) {
 }
 
 export async function analizarLaboratorio(input: {
-  archivo: Archivo;
-  anterior?: Archivo | null;
+  archivos: Archivo[];
+  anteriores?: Archivo[];
   datos?: DatosPaciente;
 }): Promise<AnalisisLab> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY no configurada");
+  if (!input.archivos || input.archivos.length === 0) {
+    throw new Error("No se recibió ningún documento del estudio.");
+  }
   const client = new Anthropic({ apiKey });
 
-  const comparar = !!input.anterior;
-  const prompt = construirPrompt({ datos: input.datos, comparar });
+  const anteriores = input.anteriores ?? [];
+  const comparar = anteriores.length > 0;
+  const varios = input.archivos.length > 1;
+  const prompt = construirPrompt({ datos: input.datos, comparar, varios });
 
   const content: Anthropic.ContentBlockParam[] = [];
-  if (input.anterior) {
-    content.push({ type: "text", text: "ESTUDIO ANTERIOR:" });
-    content.push(bloqueArchivo(input.anterior));
-    content.push({ type: "text", text: "ESTUDIO ACTUAL (el más reciente):" });
+  if (comparar) {
+    content.push({
+      type: "text",
+      text: `ESTUDIO ANTERIOR (${anteriores.length} documento(s)):`,
+    });
+    for (const a of anteriores) content.push(bloqueArchivo(a));
+    content.push({
+      type: "text",
+      text: `ESTUDIO ACTUAL — el más reciente (${input.archivos.length} documento(s)):`,
+    });
   }
-  content.push(bloqueArchivo(input.archivo));
+  for (const a of input.archivos) content.push(bloqueArchivo(a));
   content.push({ type: "text", text: prompt });
 
   const msg = await client.messages.create({
