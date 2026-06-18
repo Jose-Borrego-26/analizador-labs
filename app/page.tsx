@@ -1,9 +1,13 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AnalisisLab, DatosPaciente, Sexo } from "@/app/lib/analizar-lab";
 import Resultado from "@/app/components/Resultado";
 import ChatSeguimiento from "@/app/components/ChatSeguimiento";
+
+const LS_DATA = "analizador-labs:data";
+const LS_DATOS = "analizador-labs:datosUsados";
+const LS_CHAT = "analizador-labs:chat";
 
 function SelectorArchivos({
   archivos,
@@ -75,9 +79,41 @@ export default function Home() {
   const [data, setData] = useState<AnalisisLab | null>(null);
   const [datosUsados, setDatosUsados] = useState<DatosPaciente>({});
 
+  // Rehidrata el último análisis para que NO se pierda ante recargas,
+  // remounts o Fast Refresh: los resultados solo vivían en memoria de React.
+  useEffect(() => {
+    try {
+      const d = sessionStorage.getItem(LS_DATA);
+      if (d) setData(JSON.parse(d) as AnalisisLab);
+      const du = sessionStorage.getItem(LS_DATOS);
+      if (du) setDatosUsados(JSON.parse(du) as DatosPaciente);
+    } catch {
+      /* sessionStorage no disponible o JSON corrupto: se ignora */
+    }
+  }, []);
+
+  function guardarResultado(d: AnalisisLab, du: DatosPaciente) {
+    try {
+      sessionStorage.setItem(LS_DATA, JSON.stringify(d));
+      sessionStorage.setItem(LS_DATOS, JSON.stringify(du));
+    } catch {
+      /* sin persistencia: el análisis sigue en memoria */
+    }
+  }
+
+  function limpiarResultado() {
+    try {
+      sessionStorage.removeItem(LS_DATA);
+      sessionStorage.removeItem(LS_DATOS);
+      sessionStorage.removeItem(LS_CHAT);
+    } catch {
+      /* noop */
+    }
+    setData(null);
+  }
+
   function agregarArchivos(fs: File[]) {
     setError(null);
-    setData(null);
     setArchivos((prev) => [...prev, ...fs]);
   }
   function quitarArchivo(i: number) {
@@ -88,7 +124,6 @@ export default function Home() {
     if (archivos.length === 0) return;
     setCargando(true);
     setError(null);
-    setData(null);
     try {
       const fd = new FormData();
       archivos.forEach((f) => fd.append("archivos", f));
@@ -100,13 +135,22 @@ export default function Home() {
       const res = await fetch("/api/analizar", { method: "POST", body: fd });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Error al analizar.");
-      setData(json as AnalisisLab);
-      setDatosUsados({
+      const nuevoData = json as AnalisisLab;
+      const nuevosDatos: DatosPaciente = {
         sexo,
         edad: edad ? Number(edad) : null,
         objetivo: objetivo.trim(),
         notasCoach: notas.trim(),
-      });
+      };
+      setData(nuevoData);
+      setDatosUsados(nuevosDatos);
+      guardarResultado(nuevoData, nuevosDatos);
+      // El chat anterior pertenecía a otro estudio: empieza limpio.
+      try {
+        sessionStorage.removeItem(LS_CHAT);
+      } catch {
+        /* noop */
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error al analizar.");
     } finally {
@@ -256,7 +300,14 @@ export default function Home() {
 
       {data && (
         <>
-          <div className="flex justify-end mb-4 no-print">
+          <div className="flex justify-end gap-2 mb-4 no-print">
+            <button
+              type="button"
+              onClick={limpiarResultado}
+              className="rounded-xl border border-hb-grisOsc/30 text-hb-grisOsc/70 font-semibold px-4 py-2 hover:bg-hb-grisOsc/10 transition-colors"
+            >
+              Nuevo análisis
+            </button>
             <button
               type="button"
               onClick={() => window.print()}
@@ -268,7 +319,11 @@ export default function Home() {
           <div id="reporte">
             <Resultado data={data} />
           </div>
-          <ChatSeguimiento analisis={data} datos={datosUsados} />
+          <ChatSeguimiento
+            key={(data.fechaEstudio ?? "") + "|" + data.resumen.slice(0, 40)}
+            analisis={data}
+            datos={datosUsados}
+          />
         </>
       )}
     </main>
