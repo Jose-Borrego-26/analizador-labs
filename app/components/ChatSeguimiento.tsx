@@ -1,53 +1,30 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import type { AnalisisLab, DatosPaciente } from "@/app/lib/analizar-lab";
-
-const LS_CHAT = "analizador-labs:chat";
-
-interface Msg {
-  role: "user" | "assistant";
-  content: string;
-}
+import type { ChatMsg } from "@/app/lib/sesiones";
 
 export default function ChatSeguimiento({
   analisis,
   datos,
+  mensajes,
+  onMensajes,
 }: {
   analisis: AnalisisLab;
   datos: DatosPaciente;
+  mensajes: ChatMsg[];
+  onMensajes: (msgs: ChatMsg[]) => void;
 }) {
-  const [mensajes, setMensajes] = useState<Msg[]>([]);
   const [texto, setTexto] = useState("");
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const finRef = useRef<HTMLDivElement>(null);
 
-  // Rehidrata la conversación para que no se pierda ante recargas/HMR.
-  useEffect(() => {
-    try {
-      const c = sessionStorage.getItem(LS_CHAT);
-      if (c) setMensajes(JSON.parse(c) as Msg[]);
-    } catch {
-      /* noop */
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
-      if (mensajes.length > 0)
-        sessionStorage.setItem(LS_CHAT, JSON.stringify(mensajes));
-      else sessionStorage.removeItem(LS_CHAT);
-    } catch {
-      /* noop */
-    }
-  }, [mensajes]);
-
   async function enviar() {
     const pregunta = texto.trim();
     if (!pregunta || cargando) return;
-    const nuevos: Msg[] = [...mensajes, { role: "user", content: pregunta }];
-    setMensajes(nuevos);
+    const nuevos: ChatMsg[] = [...mensajes, { role: "user", content: pregunta }];
+    onMensajes(nuevos);
     setTexto("");
     setError(null);
     setCargando(true);
@@ -59,7 +36,7 @@ export default function ChatSeguimiento({
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Error en el chat.");
-      setMensajes([...nuevos, { role: "assistant", content: json.respuesta }]);
+      onMensajes([...nuevos, { role: "assistant", content: json.respuesta }]);
       setTimeout(() => finRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error en el chat.");
