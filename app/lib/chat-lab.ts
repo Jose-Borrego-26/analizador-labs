@@ -110,7 +110,7 @@ ${contextoAnalisis(input.analisis)}${contextoPaciente(input.datos)}`;
 
   const msg = await client.messages.create({
     model: MODELO,
-    max_tokens: 1500,
+    max_tokens: 8000,
     system,
     messages: input.messages.map((m) => ({ role: m.role, content: m.content })),
   });
