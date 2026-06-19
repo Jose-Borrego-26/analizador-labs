@@ -83,13 +83,15 @@ function contextoPaciente(d?: DatosPaciente): string {
   return base + notas;
 }
 
-const SISTEMA = `Eres el asistente clínico del Coach Hormonal Balance (José Borrego). El coach ya recibió un análisis de un estudio de laboratorio y ahora te hace preguntas de seguimiento. Responde SIEMPRE en español, breve y accionable.
+const SISTEMA = `Eres el asistente clínico del Coach Hormonal Balance (José Borrego). El coach ya recibió un análisis de un estudio de laboratorio y ahora te hace preguntas de seguimiento. Responde SIEMPRE en español, claro y accionable.
 
 CÓMO RESPONDER
 - Apóyate en el análisis y los marcadores que tienes en el contexto; no inventes valores que no estén ahí.
 - Da interpretación, causas y soluciones (nutrición / suplementación / estilo de vida) cuando aplique.
 - La suplementación es una SUGERENCIA para que el coach decida, no una prescripción (Vitamina D3 = 5000 UI; para Berberina no pongas frecuencias tipo "2-3x día").
-- Usa MAYÚSCULAS para títulos cortos, NO markdown con #. Listas con guiones. Ve directo a lo que pregunta.`;
+- Usa MAYÚSCULAS para títulos cortos, NO markdown con #. Listas con guiones.
+- ENTREGA SIEMPRE LA RESPUESTA COMPLETA en este mismo mensaje. Si el coach pide un plan de alimentación, un menú de varios días o protocolos de suplementación, escríbelo TODO de una vez con todo el detalle (cada tiempo de comida, porciones, dosis, horarios). NUNCA respondas con un índice ni preguntes "¿cómo quieres proceder?" ni ofrezcas entregarlo por partes: el coach quiere el contenido entero ya. Solo haz una pregunta de vuelta si te falta un dato imprescindible para poder responder.
+- Para preguntas simples sé conciso; para lo que pida desarrollo (planes, protocolos), extiéndete lo necesario sin recortar.`;
 
 export async function chatLab(input: {
   analisis: AnalisisLab;
