@@ -16,24 +16,51 @@ export default function ChatSeguimiento({
   onMensajes: (msgs: ChatMsg[]) => void;
 }) {
   const [texto, setTexto] = useState("");
+  const [adjuntos, setAdjuntos] = useState<File[]>([]);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const finRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  function agregarAdjuntos(fs: File[]) {
+    setError(null);
+    setAdjuntos((prev) => [...prev, ...fs]);
+  }
+  function quitarAdjunto(i: number) {
+    setAdjuntos((prev) => prev.filter((_, j) => j !== i));
+  }
 
   async function enviar() {
     const pregunta = texto.trim();
-    if (!pregunta || cargando) return;
-    const nuevos: ChatMsg[] = [...mensajes, { role: "user", content: pregunta }];
+    if ((!pregunta && adjuntos.length === 0) || cargando) return;
+    // Si solo adjunta archivos sin escribir, ponemos una instrucción por defecto.
+    const textoFinal =
+      pregunta ||
+      "Te adjunto estos nuevos estudios. Intégralos al diagnóstico y dime qué cambia.";
+    // En la burbuja se muestra qué documentos se adjuntaron.
+    const nota =
+      adjuntos.length > 0
+        ? `\n\n📎 ${adjuntos.length} documento(s) adjunto(s): ${adjuntos
+            .map((f) => f.name)
+            .join(", ")}`
+        : "";
+    const nuevos: ChatMsg[] = [
+      ...mensajes,
+      { role: "user", content: textoFinal + nota },
+    ];
     onMensajes(nuevos);
+    const archivos = adjuntos;
     setTexto("");
+    setAdjuntos([]);
     setError(null);
     setCargando(true);
     try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ analisis, datos, messages: nuevos }),
-      });
+      const fd = new FormData();
+      fd.append("analisis", JSON.stringify(analisis));
+      fd.append("datos", JSON.stringify(datos ?? {}));
+      fd.append("messages", JSON.stringify(nuevos));
+      archivos.forEach((f) => fd.append("adjuntos", f));
+      const res = await fetch("/api/chat", { method: "POST", body: fd });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Error en el chat.");
       onMensajes([...nuevos, { role: "assistant", content: json.respuesta }]);
@@ -91,7 +118,50 @@ export default function ChatSeguimiento({
         <p className="text-sm text-hb-magfuerte font-semibold mb-2">{error}</p>
       )}
 
+      {/* Archivos por adjuntar en el próximo mensaje */}
+      {adjuntos.length > 0 && (
+        <ul className="mb-2 space-y-1">
+          {adjuntos.map((f, i) => (
+            <li
+              key={i}
+              className="flex items-center justify-between gap-3 rounded-xl bg-white/70 border border-hb-dorado/30 px-3 py-1.5"
+            >
+              <span className="text-sm text-hb-purpura font-semibold break-all">
+                📎 {f.name}
+              </span>
+              <button
+                type="button"
+                onClick={() => quitarAdjunto(i)}
+                className="flex-none text-sm text-hb-grisOsc/50 hover:text-hb-magfuerte transition-colors"
+              >
+                Quitar
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <input
+        ref={fileRef}
+        type="file"
+        multiple
+        accept="application/pdf,image/jpeg,image/png,image/webp"
+        className="hidden"
+        onChange={(e) => {
+          agregarAdjuntos(Array.from(e.target.files ?? []));
+          if (fileRef.current) fileRef.current.value = "";
+        }}
+      />
+
       <div className="flex items-end gap-2">
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          title="Adjuntar nuevos estudios (PDF o imágenes)"
+          className="flex-none rounded-2xl border border-hb-purpura/40 text-hb-purpura font-bold px-4 py-3 hover:bg-hb-purpura/10 transition-colors"
+        >
+          + Estudio
+        </button>
         <textarea
           value={texto}
           onChange={(e) => setTexto(e.target.value)}
@@ -102,13 +172,13 @@ export default function ChatSeguimiento({
             }
           }}
           rows={2}
-          placeholder="Ej. ¿Qué le doy para subir la vitamina D? ¿La insulina alta es grave?"
+          placeholder="Pregunta o adjunta nuevos estudios con “+ Estudio”…"
           className="flex-1 rounded-2xl border border-hb-dorado/40 bg-white px-4 py-2 resize-y"
         />
         <button
           type="button"
           onClick={enviar}
-          disabled={!texto.trim() || cargando}
+          disabled={(!texto.trim() && adjuntos.length === 0) || cargando}
           className="flex-none rounded-2xl bg-hb-purpura text-white font-bold px-5 py-3 disabled:opacity-40 hover:bg-hb-purpura/90 transition-colors"
         >
           Enviar

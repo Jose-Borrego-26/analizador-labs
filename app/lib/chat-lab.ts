@@ -16,6 +16,33 @@ export interface ChatMsg {
   content: string;
 }
 
+// Estudio adicional que el coach adjunta DENTRO del chat (p.ej. los análisis
+// que la IA pidió que la paciente se realizara) para afinar el diagnóstico.
+export interface Adjunto {
+  base64: string;
+  mediaType: string;
+}
+
+function bloqueArchivo(a: Adjunto) {
+  return a.mediaType === "application/pdf"
+    ? {
+        type: "document" as const,
+        source: {
+          type: "base64" as const,
+          media_type: "application/pdf" as const,
+          data: a.base64,
+        },
+      }
+    : {
+        type: "image" as const,
+        source: {
+          type: "base64" as const,
+          media_type: a.mediaType as "image/jpeg" | "image/png" | "image/webp",
+          data: a.base64,
+        },
+      };
+}
+
 function refStr(m: Marcador): string {
   if (m.refTexto) return m.refTexto;
   if (m.refMin != null && m.refMax != null) return `${m.refMin}-${m.refMax}`;
@@ -91,12 +118,14 @@ CÓMO RESPONDER
 - La suplementación es una SUGERENCIA para que el coach decida, no una prescripción (Vitamina D3 = 5000 UI; para Berberina no pongas frecuencias tipo "2-3x día").
 - Usa MAYÚSCULAS para títulos cortos, NO markdown con #. Listas con guiones.
 - ENTREGA SIEMPRE LA RESPUESTA COMPLETA en este mismo mensaje. Si el coach pide un plan de alimentación, un menú de varios días o protocolos de suplementación, escríbelo TODO de una vez con todo el detalle (cada tiempo de comida, porciones, dosis, horarios). NUNCA respondas con un índice ni preguntes "¿cómo quieres proceder?" ni ofrezcas entregarlo por partes: el coach quiere el contenido entero ya. Solo haz una pregunta de vuelta si te falta un dato imprescindible para poder responder.
-- Para preguntas simples sé conciso; para lo que pida desarrollo (planes, protocolos), extiéndete lo necesario sin recortar.`;
+- Para preguntas simples sé conciso; para lo que pida desarrollo (planes, protocolos), extiéndete lo necesario sin recortar.
+- SÍ PUEDES RECIBIR ARCHIVOS: el coach puede adjuntar en el chat nuevos estudios de laboratorio (PDF o imágenes) de la MISMA paciente, normalmente los que tú sugeriste realizar. Cuando lleguen, léelos COMPLETOS, extrae los valores y rangos relevantes e intégralos con el análisis previo y el contexto de la paciente para dar un diagnóstico más certero, ajustar causas y afinar la suplementación. NUNCA digas que no puedes recibir archivos.`;
 
 export async function chatLab(input: {
   analisis: AnalisisLab;
   datos?: DatosPaciente;
   messages: ChatMsg[];
+  adjuntos?: Adjunto[];
 }): Promise<string> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY no configurada");
@@ -110,11 +139,29 @@ export async function chatLab(input: {
 === ESTUDIO ANALIZADO ===
 ${contextoAnalisis(input.analisis)}${contextoPaciente(input.datos)}`;
 
+  const adjuntos = input.adjuntos ?? [];
+  const ultimo = input.messages.length - 1;
+  const messages: Anthropic.MessageParam[] = input.messages.map((m, i) => {
+    // Los archivos adjuntos van pegados al ÚLTIMO mensaje del coach.
+    if (i === ultimo && m.role === "user" && adjuntos.length > 0) {
+      const bloques: Anthropic.ContentBlockParam[] = [
+        {
+          type: "text",
+          text: "Te adjunto NUEVOS estudios de laboratorio de la misma paciente para integrarlos al diagnóstico:",
+        },
+        ...adjuntos.map(bloqueArchivo),
+        { type: "text", text: m.content },
+      ];
+      return { role: "user", content: bloques };
+    }
+    return { role: m.role, content: m.content };
+  });
+
   const msg = await client.messages.create({
     model: MODELO,
     max_tokens: 8000,
     system,
-    messages: input.messages.map((m) => ({ role: m.role, content: m.content })),
+    messages,
   });
 
   return msg.content
